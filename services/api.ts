@@ -158,6 +158,16 @@ export const api = {
     return handleResponse(res);
   },
 
+  // AI Chat
+  sendChatMessage: async (message: string): Promise<{ reply: string }> => {
+    const res = await fetch(`${API_URL}/chat`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ message })
+    });
+    return handleResponse(res);
+  },
+
   // WhatsApp
   getWhatsAppStatus: async (): Promise<{ status: string; qr: string | null; info?: any }> => {
     const res = await fetch(`${API_URL}/whatsapp/status`, { headers: getAuthHeader() });
