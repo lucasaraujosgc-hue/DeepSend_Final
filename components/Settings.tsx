@@ -11,17 +11,59 @@ interface SettingsProps {
 }
 
 const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
-  const [activeTab, setActiveTab] = useState<'signatures' | 'categories' | 'documents' | 'bindings' | 'due_dates' | 'daily'>('signatures');
+  const [activeTab, setActiveTab] = useState<'signatures' | 'categories' | 'documents' | 'bindings' | 'due_dates' | 'daily' | 'files'>('signatures');
   const [formData, setFormData] = useState<UserSettings>(settings);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [newKeyword, setNewKeyword] = useState('');
   const [newCustomCategory, setNewCustomCategory] = useState('');
   const [loadingTest, setLoadingTest] = useState(false);
-  
+  const [files, setFiles] = useState<any[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+
   // Combina categorias padrão com as customizadas para os dropdowns
   const allCategories = [...DOCUMENT_CATEGORIES, ...(formData.customCategories || [])];
   const [selectedCategoryForKeyword, setSelectedCategoryForKeyword] = useState(allCategories[0]);
+
+  const loadFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      const res = await fetch('/api/files', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFiles(data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  const handleDeleteFile = async (filename: string) => {
+    if (!window.confirm('Tem certeza que deseja excluir este arquivo?')) return;
+    try {
+      const res = await fetch(`/api/files/${filename}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        setFiles(files.filter(f => f.filename !== filename));
+      } else {
+        alert('Erro ao excluir arquivo.');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  React.useEffect(() => {
+    if (activeTab === 'files') {
+      loadFiles();
+    }
+  }, [activeTab]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -205,6 +247,13 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
               ${activeTab === 'daily' ? 'border-blue-500 text-blue-600 bg-blue-50/50' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
             <Clock className="w-4 h-4" /> Resumo Diário
+          </button>
+          <button
+            onClick={() => setActiveTab('files')}
+            className={`px-4 py-4 font-medium text-sm flex items-center gap-2 transition-colors border-b-2 whitespace-nowrap
+              ${activeTab === 'files' ? 'border-blue-500 text-blue-600 bg-blue-50/50' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            <FileText className="w-4 h-4" /> Arquivos
           </button>
         </div>
 
@@ -542,6 +591,77 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
                           {loadingTest ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                           Disparar Resumo Agora (Teste)
                       </button>
+                  </div>
+              </div>
+          )}
+
+          {activeTab === 'files' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="mb-6">
+                      <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                          <FileText className="w-5 h-5 text-blue-600" /> Gerenciamento de Arquivos
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                          Visualize e gerencie os arquivos recebidos via WhatsApp ou enviados pela plataforma.
+                      </p>
+                  </div>
+
+                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                      {loadingFiles ? (
+                          <div className="p-8 text-center text-gray-500 flex flex-col items-center">
+                              <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-2" />
+                              <p>Carregando arquivos...</p>
+                          </div>
+                      ) : files.length === 0 ? (
+                          <div className="p-8 text-center text-gray-500">
+                              Nenhum arquivo encontrado.
+                          </div>
+                      ) : (
+                          <table className="w-full text-left border-collapse">
+                              <thead>
+                                  <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 text-sm">
+                                      <th className="p-3 font-semibold">Nome do Arquivo</th>
+                                      <th className="p-3 font-semibold">Tamanho</th>
+                                      <th className="p-3 font-semibold">Enviado por</th>
+                                      <th className="p-3 font-semibold">Data</th>
+                                      <th className="p-3 font-semibold text-right">Ações</th>
+                                  </tr>
+                              </thead>
+                              <tbody>
+                                  {files.map((file, idx) => (
+                                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                          <td className="p-3 text-sm text-gray-800">
+                                              <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-2">
+                                                  <FileText size={16} className="text-gray-400" />
+                                                  {file.originalName}
+                                              </a>
+                                          </td>
+                                          <td className="p-3 text-sm text-gray-600">
+                                              {(file.size / 1024 / 1024).toFixed(2)} MB
+                                          </td>
+                                          <td className="p-3 text-sm text-gray-600">
+                                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full text-xs">
+                                                  <User size={12} />
+                                                  {file.sender}
+                                              </span>
+                                          </td>
+                                          <td className="p-3 text-sm text-gray-600">
+                                              {new Date(file.createdAt).toLocaleString('pt-BR')}
+                                          </td>
+                                          <td className="p-3 text-right">
+                                              <button 
+                                                  onClick={() => handleDeleteFile(file.filename)}
+                                                  className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors"
+                                                  title="Excluir arquivo"
+                                              >
+                                                  <Trash className="w-4 h-4" />
+                                              </button>
+                                          </td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      )}
                   </div>
               </div>
           )}

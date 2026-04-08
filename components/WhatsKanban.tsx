@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { QrCode, Smartphone, RefreshCw, Plus, MessageCircle, Settings, Tag as TagIcon, Menu, X, Edit2, XCircle, HardDrive, Image as ImageIcon, Download, Trash2, Play, Pause } from 'lucide-react';
+import { QrCode, Smartphone, RefreshCw, Plus, MessageCircle, Settings, Tag as TagIcon, Menu, X, Edit2, XCircle, HardDrive, Image as ImageIcon, Download, Trash2, Play, Pause, Check } from 'lucide-react';
 import { format } from 'date-fns';
 
 const socket = io('/', { transports: ['websocket', 'polling'] });
@@ -475,24 +475,73 @@ export default function WhatsKanban() {
               className="w-64 border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {tags.map(tag => {
               const isSelected = selectedTagFilters.includes(tag.id);
+              const isEditing = editingTagId === tag.id;
+
+              if (isEditing) {
+                return (
+                  <div key={tag.id} className="flex items-center gap-1 bg-white border border-blue-300 rounded-full px-2 py-1">
+                    <input
+                      type="text"
+                      value={editTagName}
+                      onChange={(e) => setEditTagName(e.target.value)}
+                      className="w-20 text-xs outline-none bg-transparent"
+                      autoFocus
+                    />
+                    <input 
+                      type="color" 
+                      value={editTagColor} 
+                      onChange={(e) => setEditTagColor(e.target.value)}
+                      className="w-4 h-4 p-0 border-0 rounded cursor-pointer"
+                    />
+                    <button onClick={() => handleEditTag(tag.id)} className="text-green-600 hover:text-green-700"><Check size={12} /></button>
+                    <button onClick={() => setEditingTagId(null)} className="text-gray-500 hover:text-gray-700"><X size={12} /></button>
+                  </div>
+                );
+              }
+
               return (
-                <button
-                  key={tag.id}
-                  onClick={() => {
-                    if (isSelected) {
-                      setSelectedTagFilters(prev => prev.filter(id => id !== tag.id));
-                    } else {
-                      setSelectedTagFilters(prev => [...prev, tag.id]);
-                    }
-                  }}
-                  className={`text-xs px-2 py-1 rounded-full border flex items-center gap-1 transition-colors ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
-                >
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: tag.color }}></div>
-                  {tag.name}
-                </button>
+                <div key={tag.id} className="group relative flex items-center">
+                  <button
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedTagFilters(prev => prev.filter(id => id !== tag.id));
+                      } else {
+                        setSelectedTagFilters(prev => [...prev, tag.id]);
+                      }
+                    }}
+                    className={`text-xs px-2 py-1 rounded-full border flex items-center gap-1 transition-colors ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                  >
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: tag.color }}></div>
+                    {tag.name}
+                  </button>
+                  <div className="absolute -top-2 -right-2 hidden group-hover:flex items-center bg-white border border-gray-200 rounded shadow-sm z-10">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingTagId(tag.id);
+                        setEditTagName(tag.name);
+                        setEditTagColor(tag.color);
+                      }}
+                      className="p-1 text-gray-500 hover:text-blue-600"
+                      title="Editar Tag"
+                    >
+                      <Edit2 size={10} />
+                    </button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteTag(tag.id);
+                      }}
+                      className="p-1 text-gray-500 hover:text-red-600"
+                      title="Excluir Tag"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                </div>
               );
             })}
             <button 

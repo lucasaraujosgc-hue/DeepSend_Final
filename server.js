@@ -300,6 +300,18 @@ const assistantTools = [
         }
     },
     {
+        name: "search_messages",
+        description: "Busca mensagens recebidas ou enviadas no WhatsApp.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                date: { type: Type.STRING, description: "Data no formato YYYY-MM-DD para filtrar mensagens daquele dia." },
+                from_me: { type: Type.BOOLEAN, description: "Se true, busca mensagens enviadas por mim. Se false, recebidas." },
+                limit: { type: Type.INTEGER, description: "Limite de mensagens a retornar (padrão 10, max 50)." }
+            }
+        }
+    },
+    {
         name: "manage_memory",
         description: "Salva/Busca informações gerais (treinos, estudos).",
         parameters: {
@@ -445,6 +457,39 @@ const executeTool = async (name, args, db, username) => {
         });
     }
 
+    if (name === "search_messages") {
+        return new Promise(resolve => {
+            let sql = `
+                SELECT m.body, m.from_me, m.timestamp, m.media_name, c.name as contact_name
+                FROM kanban_messages m
+                LEFT JOIN kanban_chats c ON m.chat_id = c.id
+                WHERE 1=1
+            `;
+            const params = [];
+
+            if (args.date) {
+                // args.date is YYYY-MM-DD
+                const startOfDay = new Date(args.date + "T00:00:00Z").getTime();
+                const endOfDay = new Date(args.date + "T23:59:59Z").getTime();
+                sql += " AND m.timestamp >= ? AND m.timestamp <= ?";
+                params.push(startOfDay, endOfDay);
+            }
+
+            if (args.from_me !== undefined) {
+                sql += " AND m.from_me = ?";
+                params.push(args.from_me ? 1 : 0);
+            }
+
+            sql += " ORDER BY m.timestamp DESC LIMIT ?";
+            params.push(args.limit || 10);
+
+            db.all(sql, params, (err, rows) => {
+                if(err) resolve("Erro na busca de mensagens: " + err.message);
+                else resolve(rows.length ? JSON.stringify(rows) : "Nenhuma mensagem encontrada.");
+            });
+        });
+    }
+
     if (name === "manage_memory") {
         if (args.action === "save") {
             const now = new Date().toISOString();
@@ -573,66 +618,28 @@ Você interpreta o pedido, mas NÃO inventa a resposta final se os dados ainda n
 MODO DE FUNCIONAMENTO
 ==================================================
 
-Você deve operar em dois modos principais:
+Você deve operar usando as FERRAMENTAS (tools) disponíveis.
 
---------------------------------------------------
-MODO 1 — INTERPRETAÇÃO DE COMANDO
---------------------------------------------------
+Quando o usuário fizer uma pergunta ou ordem relacionada a dados do sistema, você DEVE CHAMAR A FERRAMENTA APROPRIADA (ex: search_messages, consult_tasks, search_company).
 
-Quando o usuário fizer uma pergunta ou ordem relacionada a dados do sistema, você deve retornar uma estrutura JSON clara e objetiva representando a intenção.
+NÃO retorne um JSON em texto plano dizendo o que quer fazer. CHAME A FUNÇÃO.
 
 Exemplo:
 Usuário: "Quantas mensagens recebi ontem?"
-
-Saída esperada:
-{
-  "mode": "system_query",
-  "intent": "count_messages",
-  "filters": {
-    "date": "yesterday",
-    "from_me": false
-  },
-  "response_style": "short"
-}
-
-Outro exemplo:
-Usuário: "Me resuma as mensagens recebidas no dia 08/04 que estão sem tag"
-
-Saída esperada:
-{
-  "mode": "system_query",
-  "intent": "summarize_messages",
-  "filters": {
-    "date": "2026-04-08",
-    "tag": null,
-    "from_me": false
-  },
-  "response_style": "summary"
-}
+Ação: Chame a ferramenta "search_messages" com a data de ontem e from_me=false. Depois, leia o resultado e responda em linguagem natural.
 
 Outro exemplo:
 Usuário: "Enviei a mensagem de solicitação de extrato bancário para os contatos da tag fiscal?"
-
-Saída esperada:
-{
-  "mode": "system_query",
-  "intent": "check_sent_message",
-  "filters": {
-    "tag": "fiscal",
-    "message_contains": "solicitação de extrato bancário",
-    "from_me": true
-  },
-  "response_style": "verification"
-}
+Ação: Chame a ferramenta "search_messages" e analise os resultados.
 
 IMPORTANTE:
-Sempre que o pedido depender de dados do sistema, você deve preferir retornar JSON estruturado para que o backend execute a consulta.
+Sempre que o pedido depender de dados do sistema, use as ferramentas. Nunca invente dados.
 
 --------------------------------------------------
 MODO 2 — ANÁLISE / RESUMO / RESPOSTA
 --------------------------------------------------
 
-Quando o sistema já fornecer os dados para análise, você deve responder em linguagem natural útil, clara e operacional.
+Quando o sistema retornar os dados da ferramenta, você deve responder em linguagem natural útil, clara e operacional.
 
 Exemplo:
 Se o sistema fornecer mensagens agrupadas por cliente, você deve:
@@ -758,70 +765,13 @@ FORMATO DE SAÍDA
 Você deve escolher o formato correto conforme o contexto:
 
 1. Se for pedido operacional que depende do sistema:
-RETORNE JSON E NADA MAIS
+CHAME A FERRAMENTA APROPRIADA E RESPONDA EM LINGUAGEM NATURAL.
 
 2. Se for pedido de análise de dados já fornecidos:
 RETORNE TEXTO CLARO E ÚTIL
 
 3. Se for pedido de sugestão de resposta:
 RETORNE SOMENTE A SUGESTÃO DE RESPOSTA
-
-4. Se for pedido de classificação:
-RETORNE JSON ESTRUTURADO
-
-==================================================
-PADRÕES DE JSON
-==================================================
-
-Use sempre estruturas simples, consistentes e previsíveis.
-
-Exemplo para consulta:
-{
-  "mode": "system_query",
-  "intent": "count_messages",
-  "filters": {
-    "date": "yesterday",
-    "from_me": false,
-    "tag": null
-  },
-  "response_style": "short"
-}
-
-Exemplo para resumo:
-{
-  "mode": "system_query",
-  "intent": "summarize_messages",
-  "filters": {
-    "date": "2026-04-08",
-    "tag": "fiscal",
-    "from_me": false
-  },
-  "response_style": "summary"
-}
-
-Exemplo para classificação:
-{
-  "mode": "classification",
-  "category": "fiscal",
-  "sub_category": "envio_documentos",
-  "priority": "normal",
-  "urgent": false,
-  "suggested_tags": ["fiscal", "documentos"],
-  "suggested_column": "Aguardando Conferência"
-}
-
-Exemplo para ação:
-{
-  "mode": "system_action",
-  "intent": "send_bulk_message",
-  "filters": {
-    "tag": "fiscal"
-  },
-  "payload": {
-    "message": "Olá! Estamos aguardando o envio do extrato bancário."
-  },
-  "requires_confirmation": true
-}
 
 ==================================================
 ECONOMIA DE TOKENS
@@ -1258,6 +1208,82 @@ setupKanbanRoutes(app, io, getDb, getWaClientWrapper);
 app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo' });
     res.json({ filename: req.file.filename, originalName: req.file.originalname });
+});
+
+app.get('/api/files', (req, res) => {
+    const db = getDb(req.user);
+    if (!db) return res.status(500).json({ error: 'Database error' });
+
+    fs.readdir(UPLOADS_DIR, (err, files) => {
+        if (err) return res.status(500).json({ error: 'Erro ao ler diretório de uploads' });
+
+        const fileDetails = [];
+        let processed = 0;
+
+        if (files.length === 0) {
+            return res.json([]);
+        }
+
+        files.forEach(file => {
+            const filePath = path.join(UPLOADS_DIR, file);
+            fs.stat(filePath, (err, stats) => {
+                if (err) {
+                    processed++;
+                    if (processed === files.length) res.json(fileDetails);
+                    return;
+                }
+
+                // Check if file is from whatsapp
+                const mediaUrl = `/uploads/${file}`;
+                db.get(`
+                    SELECT m.media_name, c.name as sender_name, m.from_me
+                    FROM kanban_messages m
+                    LEFT JOIN kanban_chats c ON m.chat_id = c.id
+                    WHERE m.media_url = ?
+                `, [mediaUrl], (err, row) => {
+                    let sender = 'Upload Local';
+                    let originalName = file;
+
+                    if (row) {
+                        sender = row.from_me ? 'Eu (Enviado)' : (row.sender_name || 'Desconhecido');
+                        originalName = row.media_name || file;
+                    }
+
+                    fileDetails.push({
+                        filename: file,
+                        originalName: originalName,
+                        size: stats.size,
+                        createdAt: stats.birthtime,
+                        sender: sender,
+                        url: mediaUrl
+                    });
+
+                    processed++;
+                    if (processed === files.length) {
+                        // Sort by date desc
+                        fileDetails.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                        res.json(fileDetails);
+                    }
+                });
+            });
+        });
+    });
+});
+
+app.delete('/api/files/:filename', (req, res) => {
+    const filename = req.params.filename;
+    // Basic security check
+    if (filename.includes('/') || filename.includes('..')) {
+        return res.status(400).json({ error: 'Nome de arquivo inválido' });
+    }
+
+    const filePath = path.join(UPLOADS_DIR, filename);
+    fs.unlink(filePath, (err) => {
+        if (err && err.code !== 'ENOENT') {
+            return res.status(500).json({ error: 'Erro ao excluir arquivo' });
+        }
+        res.json({ success: true });
+    });
 });
 
 app.get('/api/settings', (req, res) => {
