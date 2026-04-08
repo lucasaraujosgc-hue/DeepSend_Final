@@ -46,6 +46,7 @@ COPY --from=builder /app/node_modules ./node_modules
 
 # Copia servidor e frontend buildado
 COPY server.js ./
+COPY server-kanban.js ./
 COPY --from=builder /app/dist ./dist
 
 # Cria diretórios necessários e ajusta permissões
